@@ -1,0 +1,84 @@
+---
+title: "TJSP"
+author: "Julio Trecenti"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{TJSP}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+## Download de dados do TJSP
+
+```{r message=FALSE, warning=FALSE}
+library(tjsp)
+library(dplyr)
+library(stringr)
+
+varas <- list_varas_1inst()
+classes <- list_classes_1inst()
+
+# Apenas comarca de São Paulo
+# Apenas varas cíveiz ou juizado especial ou itinerante
+va <- varas %>%
+  filter(str_detect(nm_muni, 'PAULO'),
+         str_detect(nm_vara, 'vel|Especial|Iti'),
+         !str_detect(nm_vara, 'Crim|Juv|Fam|Faz')) %>%
+  with(cod_vara)
+
+# Apenas procedimentos ordinários, sumários, e juizado especial cível
+cl <- classes %>%
+  filter(str_detect(nm_leaf, 'Procedimento [OSd]'),
+         !str_detect(nm_leaf, 'Penal|Criminal'),
+         is.na(n0)) %>%
+  with(cod_leaf)
+```
+
+```{r eval=FALSE}
+# pesquisa realizada em 22/02/2016
+d2014 <- c('01/01/2014', '31/12/2014')
+d2015 <- c('01/01/2015', '31/12/2015')
+cjpg2014 <- cjpg(classes = cl, varas = va, datas = d2014, 
+                 path = 'data-raw/cjpg/2014')
+cjpg2015 <- cjpg(classes = cl, varas = va, datas = d2015, 
+                 path = 'data-raw/cjpg/2015')
+
+
+# pesquisa realizada em 22/02/2016
+# quebrei por mês pois fica mais rápido
+# o site do TJSP fica lento ao acessar
+# páginas com índices > 1000.
+# Uma ideia seria fazer essa adaptação
+# automaticamente (ou como um argumento da fç).
+d0 <- as.Date('2014-01-01') + months(0:23)
+d1 <- as.Date('2014-01-01') + months(1:24) - 1
+cjpg_l <- list()
+for(i in seq_along(d0)) {
+  nm <- format(d0[i], '%Y%m')
+  p <- sprintf('data-raw/cjpg/%s', nm)
+  cjpg_l[[nm]] <- cjpg(classes = cl, varas = va, datas = c(d0[i], d1[i]), path = p)
+  cjpg_l[[nm]]$yearmon <- nm
+}
+cjpg_res <- dplyr::bind_rows(cjpg_l)
+
+removidos <- cjpg_res %>% 
+  filter(result != 'OK') %>% 
+  mutate(arq = sprintf('data-raw/cjpg/%s/%06d.html', yearmon, pag)) %>% 
+  with(arq) %>% 
+  # head() %>% 
+  file.remove()
+
+cjpg_res %>% count(result) %>% nrow()
+```
+
+```{r}
+path <- ifelse(str_detect(getwd(), 'vignette'), '..', '.')
+
+d_cjpg <- dir(sprintf('%s/data-raw/cjpg/2014', path), full.names = TRUE) %>% 
+  c(dir(sprintf('%s/data-raw/cjpg/2015', path), full.names = TRUE)) %>% 
+  parse_cjpg()
+
+d_cjpg
+```
+
