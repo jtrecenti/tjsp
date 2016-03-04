@@ -71,6 +71,32 @@ build_url_cjpg <- function(l) {
   httr::modify_url(u_base, query = x)
 }
 
-parse_cjpg <- function() {
-
+parse_node <- function (node, salvar = FALSE, path = "", pag) {
+  children <- XML::xmlChildren(node)
+  df <- do.call(cbind, lapply(children[2:(length(children) - 1)], parse_node_meta))
+  a <- XML::xmlChildren(XML::xmlChildren(children[[1]])$td)$a
+  df$n_processo <- gsub("[\n\r\t ]", "", XML::xmlValue(a))
+  df$cod_sentenca <- XML::xmlGetAttr(a, "name")
+  child_td <- XML::xmlChildren(XML::xmlChildren(children[[length(children)]])$td)[[4]]
+  df$txt <- gsub("[\r\t]", "", XML::xmlValue(child_td))
+  df$pag <- pag
+  if (salvar) {
+    n_processo_num <- gsub("[^0-9]", "", df$n_processo)
+    arq <- sprintf("%s/%s_%s.rds", path, n_processo_num,
+                   df$cod_sentenca)
+    if (!file.exists(arq)) {
+      saveRDS(df, file = arq)
+    }
+  }
+  df
 }
+
+#' @export
+parse_cjpg_pag <- function(arq, salvar = FALSE) {
+  html <- XML::htmlParse(arq, encoding = "UTF-8")
+  nodes <- XML::getNodeSet(html, "//tr[@class='fundocinza1']//table")
+  df <- dplyr::bind_rows(lapply(nodes, parse_node, salvar = salvar, path = path, pag = 0))
+  names(df) <- gsub(" +", "_", tolower(desacentuar(names(df))))
+  return(df)
+}
+

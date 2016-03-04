@@ -26,3 +26,7 @@ dvec <- function(.f, .l, lab = 'arq', ...) {
     dplyr::ungroup() %>%
     setNames(c(lab, names(.)[-1]))
 }
+
+rm_accent <- function(x) {
+  gsub("`|\\'", "", iconv(x, to = "ASCII//TRANSLIT"))
+}
