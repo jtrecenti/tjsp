@@ -32,3 +32,7 @@ desacentuar <- function(x) {
   gsub("`|\\'", "", iconv(x, to = "ASCII//TRANSLIT"))
 }
 
+#' @export
+rm_accent <- function(x) {
+  gsub("`|\\'", "", iconv(x, to = "ASCII//TRANSLIT"))
+}

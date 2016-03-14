@@ -11,16 +11,28 @@ vignette: >
 
 ## Download de dados do TJSP
 
+Este documento mostra como baixar os dados do site do TJSP
+
+### Pacotes utilizados
+
 ```{r message=FALSE, warning=FALSE}
 library(tjsp)
+library(esaj)
 library(dplyr)
 library(stringr)
+library(lubridate)
+```
 
+### Varas e classes
+
+```{r message=FALSE, warning=FALSE, eval=FALSE}
+# baixa lista das varas disponíveis no TJSP
 varas <- list_varas_1inst()
+# baixa lista das classes processuais
 classes <- list_classes_1inst()
 
-# Apenas comarca de São Paulo
-# Apenas varas cíveiz ou juizado especial ou itinerante
+# Consideramos apenas comarca de São Paulo
+# Apenas varas cíveis ou juizado especial ou itinerante
 va <- varas %>%
   filter(str_detect(nm_muni, 'PAULO'),
          str_detect(nm_vara, 'vel|Especial|Iti'),
@@ -35,50 +47,90 @@ cl <- classes %>%
   with(cod_leaf)
 ```
 
+### Download CJPG
+
+Pesquisa realizada em 23/02/2016.
+Datas entre 01/01/2014 e 31/12/2015.
+Quebramos as pesquisas por mês para tornar o algoritmo mais rápido, pois
+o site do TJSP fica lento ao acessar páginas com índices > 1000.
+A pesquisa demorou aproximadamente 8 horas.
+
 ```{r eval=FALSE}
-# pesquisa realizada em 22/02/2016
-d2014 <- c('01/01/2014', '31/12/2014')
-d2015 <- c('01/01/2015', '31/12/2015')
-cjpg2014 <- cjpg(classes = cl, varas = va, datas = d2014, 
-                 path = 'data-raw/cjpg/2014')
-cjpg2015 <- cjpg(classes = cl, varas = va, datas = d2015, 
-                 path = 'data-raw/cjpg/2015')
-
-
-# pesquisa realizada em 22/02/2016
-# quebrei por mês pois fica mais rápido
-# o site do TJSP fica lento ao acessar
-# páginas com índices > 1000.
-# Uma ideia seria fazer essa adaptação
-# automaticamente (ou como um argumento da fç).
 d0 <- as.Date('2014-01-01') + months(0:23)
 d1 <- as.Date('2014-01-01') + months(1:24) - 1
 cjpg_l <- list()
 for(i in seq_along(d0)) {
   nm <- format(d0[i], '%Y%m')
   p <- sprintf('data-raw/cjpg/%s', nm)
-  cjpg_l[[nm]] <- cjpg(classes = cl, varas = va, datas = c(d0[i], d1[i]), path = p)
+  suppressWarnings(dir.create(p))
+  # Essa é a fç que baixa os dados
+  cjpg_l[[nm]] <- cjpg(classes = cl, varas = va, 
+                       datas = c(d0[i], d1[i]), path = p)
   cjpg_l[[nm]]$yearmon <- nm
 }
+
+# Salvando log dos resultados da cjpg.
 cjpg_res <- dplyr::bind_rows(cjpg_l)
-
-removidos <- cjpg_res %>% 
-  filter(result != 'OK') %>% 
-  mutate(arq = sprintf('data-raw/cjpg/%s/%06d.html', yearmon, pag)) %>% 
-  with(arq) %>% 
-  # head() %>% 
-  file.remove()
-
-cjpg_res %>% count(result) %>% nrow()
+saveRDS(cjpg_res, 'data-raw/cjpg_res.rds')
 ```
 
-```{r}
-path <- ifelse(str_detect(getwd(), 'vignette'), '..', '.')
+### Parse CJPG
 
-d_cjpg <- dir(sprintf('%s/data-raw/cjpg/2014', path), full.names = TRUE) %>% 
-  c(dir(sprintf('%s/data-raw/cjpg/2015', path), full.names = TRUE)) %>% 
-  parse_cjpg()
+A leitura dos arquivos demora aproximadamente uma hora.
 
-d_cjpg
+```{r eval=FALSE}
+# Carregando os nomes dos arquivos a partir das pastas
+# O código é um pouco complicado pois estamos pegando
+# arquivos de várias pastas.
+d_cjpg <- sprintf('data-raw/cjpg', normalizePath(path)) %>% 
+  dir(full.names = TRUE) %>% 
+  {data_frame(pasta = .)} %>% 
+  group_by(pasta) %>% 
+  do(data_frame(arq = dir(.$pasta, full.names = TRUE))) %>% 
+  ungroup() %>% 
+  mutate(pasta = str_extract(pasta, '[0-9]+$')) %>% 
+  group_by(pasta, arq) %>% 
+  # aqui aplicamos o parser aos arquivos
+  do(parse_cjpg_pag(.$arq)) %>% 
+  ungroup() %>% 
+  distinct(cod_sentenca)
+
+# Salvando d_cjpg.rds
+saveRDS(d_cjpg, 'data-raw/d_cjpg.rds')
 ```
+
+### Download CPO-PG
+
+Pesquisa realizada em 25/02/2016.
+Utiliza processamento paralelo para aumentar quantidade de acessos.
+A pesquisa demorou aproximadamente dois dias utilizando quatro núcleos.
+
+```{r eval=FALSE}
+# Processos que queremos baixar
+p <- unique(d_cjpg$n_processo)
+
+dir.create('data-raw/cpo-pg')
+d_cpopg_res <- cpo_pg(p, path = 'data-raw/cpo-pg')
+
+# Salvando log dos resultados da cpopg.
+saveRDS(d_cpopg_res, 'data-raw/d_cpopg_res.rds')
+```
+
+### Parse CPO-PG
+
+A leitura dos arquivos demora aproximadamente doze horas,
+utilizando quatro núcleos de processamento.
+
+```{r eval=FALSE}
+# Carrega os caminhos dos arquivos baixados
+arqs <- dir('data-raw/cpo-pg', full.names = TRUE)
+# Utiliza processamento paralelo
+d_cpopg <- parse_cpopg(arqs)
+# Salvando d_cpopg.rds
+saveRDS(d_cpopg, 'data-raw/d_cpopg.rds')
+```
+
+
+
+
 
