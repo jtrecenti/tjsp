@@ -2,6 +2,7 @@
 
 export("%>%")
 export(cjpg)
+export(desacentuar)
 export(list_assuntos_1inst)
 export(list_classes_1inst)
 export(list_varas_1inst)
