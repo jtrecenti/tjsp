@@ -1,4 +1,8 @@
 
+# [DEPRECATED] PLEASE USE ESAJ PACKAGE
+
+[https://github.com/courtsbr/esaj](https://github.com/courtsbr/esaj)
+
 ## Install
 
 ```r
